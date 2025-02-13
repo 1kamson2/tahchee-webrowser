@@ -4,11 +4,10 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"io"
-	"os"
-	"slices"
-	//"log"
 	"net/http"
+	"os"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -18,26 +17,28 @@ type Stats struct {
 }
 
 type Scrapper struct {
-	Client         http.Client
-	ScrapperConfig SiteInterface
-	RequestConfig  map[string]string
-	ScrapperStats  Stats
-	SaveLocation   string
+	Client        http.Client
+	SiteInstance  Site
+	RequestConfig map[string]string
+	ScrapperStats Stats
+	SaveLocation  string
 }
 
-func New(cfg SiteInterface) Scrapper {
-	req_config := map[string]string{
-		"Host":            "",
-		"User-Agent":      "Mozilla/5.0 (X11; Linux x86_64; rv:134.0) Gecko/20100101 Firefox/134.0",
-		"Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
-		"Accept-Language": "en-US,en;q=0.5",
-		"Connection":      "keep-alive",
-		"Cache-Control":   "no-cache",
-		"Pragma":          "no-cache",
-		// No use of encoding for now.
-		//"Accept-Encoding": "gzip, deflate",
+func New(site Site, agent map[string]interface{}) Scrapper {
+	agent_cfg := make(map[string]string)
+	for k, v := range agent {
+		if v == nil {
+			agent_cfg[k] = "<nil>"
+			continue
+		}
+
+		if str, ok := v.(string); !ok {
+			panic("[FATAL ERROR] Unable to create agent variables.")
+		} else {
+			agent_cfg[k] = str
+		}
 	}
-	return Scrapper{http.Client{}, cfg, req_config, Stats{}, ""}
+	return Scrapper{http.Client{}, site, agent_cfg, Stats{}, os.Args[3]}
 }
 
 func (self *Scrapper) PrepareHeaders(request *http.Request) error {
@@ -47,7 +48,7 @@ func (self *Scrapper) PrepareHeaders(request *http.Request) error {
 		if len(v) == 0 {
 			skipped += 1
 		} else {
-			request.Header.Add(k, v)
+			request.Header.Set(k, v)
 		}
 	}
 	if len(request.Header) != len(self.RequestConfig)-skipped {
@@ -58,7 +59,6 @@ func (self *Scrapper) PrepareHeaders(request *http.Request) error {
 		}
 		return fmt.Errorf(mess)
 	}
-	fmt.Printf("%v", request)
 	return nil
 }
 
@@ -67,7 +67,6 @@ func (self Scrapper) GetRequest(subUrl string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("[GET Request Failed]: %s\n", err)
 	}
-
 	err = self.PrepareHeaders(request)
 	if err != nil {
 		return "", err
@@ -90,7 +89,8 @@ func (self Scrapper) GetRequest(subUrl string) (string, error) {
 }
 
 func IsValidLink(subUrl string) bool {
-	if pattern, err := regexp.Compile(`^(?:https?://)?(?:[^/.\s]+\.)*amazon\.com(?:/[^/\s]+)*/?$`); err == nil {
+	/* Regex in json, check if it will fuck up the entire program */
+	if pattern, err := regexp.Compile(`^(?:https?://)?(?:[^/.\s]+\.)*books.toscrape\.com(?:/[^/\s]+)*/?$`); err == nil {
 		return pattern.MatchString(subUrl)
 	}
 	return false
@@ -100,9 +100,9 @@ func Grep(line, pat string) int {
 	if len(pat) == 0 || len(line) == 0 {
 		return -1
 	}
-	shiftTable := [MAX_ELEMENT_BUFFER]int{}
+	shiftTable := [ELEMENT_BUFFER]int{}
 
-	for i := 0; i < int(MAX_ELEMENT_BUFFER); i++ {
+	for i := 0; i < int(ELEMENT_BUFFER); i++ {
 		shiftTable[i] = -1
 	}
 	for i := 0; i < len(pat); i++ {
@@ -145,68 +145,74 @@ func (self *Scrapper) Lexer(body string) ([]string, error) {
 	/* Add Update function to handle those things */
 
 	var mask uint8 = 1
-	var toks []string = make([]string, 0, MAX_ELEMENT_BUFFER)
+	var toks []string = make([]string, 0, ELEMENT_BUFFER)
 	var isAll int = 0
 	bodysplt := strings.Split(body, "\n")
 	for _, line := range bodysplt {
 		/* Sanitizing line from whitespaces */
 		line = strings.TrimSpace(line)
+		if len(line) == 0 {
+			continue
+		}
 		switch mask {
 		case 1 << 0:
-			if index := Grep(line, self.ScrapperConfig.GetFindValue("PAGE_ENTRY")); index != -1 {
+			// skip
+			if index := Grep(line, self.SiteInstance.GetFindValue("SITE_ENTRY")); index != -1 {
 				mask = mask << 1
 			}
 		case 1 << 1:
-			if index := Grep(line, self.ScrapperConfig.GetFindValue("PRODUCT_ENTRY")); index != -1 {
+			// skip
+			if index := Grep(line, self.SiteInstance.GetFindValue("PRODUCTS_ENTRY")); index != -1 {
 				mask = mask << 1
 			}
 		case 1 << 2:
-			if index := Grep(line, self.ScrapperConfig.GetFindValue("SKIP")); index != -1 {
+			// skip
+			if index := Grep(line, self.SiteInstance.GetFindValue("PRODUCT_ENTRY")); index != -1 {
+				toks = append(toks, DIV)
 				mask = mask << 1
 			}
 		case 1 << 3:
-			if index := Grep(line, self.ScrapperConfig.GetFindValue("PRODUCT_IN")); index != -1 {
-				toks = append(toks, DIV, line, EDIV)
+			if index := Grep(line, self.SiteInstance.GetFindValue("PRODUCT_IMG")); index != -1 {
+				toks = append(toks, SPAN, line, ESPAN)
 				isAll++
 				mask = mask << 1
 			}
 		case 1 << 4:
-			if index := Grep(line, self.ScrapperConfig.GetFindValue("PRODUCT_PICTURE")); index != -1 {
-				toks = append(toks, IMG, line, EIMG)
+			if index := Grep(line, self.SiteInstance.GetFindValue("PRODUCT_NAME")); index != -1 {
+				toks = append(toks, SPAN, line, ESPAN)
 				isAll++
 				mask = mask << 1
 			}
 		case 1 << 5:
-			if index := Grep(line, self.ScrapperConfig.GetFindValue("PRODUCT_NAME")); index != -1 {
-				toks = append(toks, H2, line, EH2)
+			if index := Grep(line, self.SiteInstance.GetFindValue("PRODUCT_RATING")); index != -1 {
+				toks = append(toks, SPAN, line, ESPAN)
 				isAll++
 				mask = mask << 1
 			}
 		case 1 << 6:
-			if index := Grep(line, self.ScrapperConfig.GetFindValue("PRODUCT_PRICE")); index != -1 {
-				toks = append(toks, SPAN, line, ESPAN)
+			if index := Grep(line, self.SiteInstance.GetFindValue("PRODUCT_PRICE")); index != -1 {
+				toks = append(toks, SPAN, line, ESPAN, EDIV)
 				isAll++
-				mask = mask << 1
-			} else if index := Grep(line, self.ScrapperConfig.GetFindValue("PRODUCT_PRICE_USED")); index != -1 {
-				toks = append(toks, SPAN, line, ESPAN)
-				isAll++
-				mask = mask << 1
-			}
-		case 1 << 7:
-			if index := Grep(line, self.ScrapperConfig.GetFindValue("PRODUCT_RATING")); index != -1 {
-				toks = append(toks, SPAN, line, ESPAN)
+				mask = 1 << 2
+			} else if index := Grep(line, self.SiteInstance.GetFindValue("NEXT_PAGE")); index != -1 {
+				toks = append(toks, SPAN, line, ESPAN, EDIV)
 				isAll++
 			}
 		default:
 			return []string{}, fmt.Errorf("[ERROR] Invalid options, skipping this page.")
 		}
 	}
-
-	if len(toks) != 3*isAll {
+	if len(toks) == 0 {
 		return []string{}, fmt.Errorf("[ERROR] Didn't parse everything.")
 	}
 
 	return toks, nil
+}
+
+func (self *Scrapper) ParserSanitize(tok, pat string) []string {
+	repat := regexp.MustCompile(pat)
+	matpat := repat.FindStringSubmatch(tok)
+	return matpat
 }
 
 func (self *Scrapper) Parser(lexed []string) (string, error) {
@@ -215,64 +221,114 @@ func (self *Scrapper) Parser(lexed []string) (string, error) {
 	   to extract data.
 	*/
 
-	validBToks := []string{DIV, IMG, H2, SPAN}
-	validEToks := []string{EDIV, EIMG, EH2, ESPAN}
-	validMToks := map[string]string{EDIV: DIV, EIMG: IMG, EH2: H2, ESPAN: SPAN}
-
+	validBToks := []string{DIV, IMG, H2, SPAN, LI, OL, A}
+	validEToks := []string{EDIV, EIMG, EH2, ESPAN, ELI, EOL, EA}
+	//validMToks := map[string]string{EDIV: DIV, EIMG: IMG, EH2: H2, ESPAN: SPAN, ELI: LI, EOL: OL, EA: A}
 	var lastTok string = lexed[0]
 	if !slices.Contains(validBToks, lastTok) {
 		return "",
 			fmt.Errorf("[ERROR]: This token doesn't start the document: %v\n", lastTok)
 	}
 
-	lexed = lexed[1:]
-	var htmlBody string = fmt.Sprintf("%v\n", lastTok)
+	var htmlBody string = fmt.Sprintf("%v\n",
+		`<!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Book Store</title>
+      <link rel="stylesheet" href="styles.css">    
+    </head>
+    <body>`)
+	var mask uint8 = 1
 	for _, tok := range lexed {
-		if slices.Contains(validBToks, tok) {
+		/* Check if we start with the correct token */
+		if slices.Contains(validBToks, tok) || slices.Contains(validEToks, tok) {
 			htmlBody += fmt.Sprintf("%v\n", tok)
 			lastTok = tok
-		} else if slices.Contains(validEToks, tok) {
-			if lastTok == validMToks[tok] {
-				htmlBody += fmt.Sprintf("%v\n", tok)
-			} else {
-				return "", fmt.Errorf("[ERROR]: This token doesn't match the map:\n %v != $v", lastTok, validMToks[tok])
-			}
 		} else {
-			// TODO: Find a function that indents or make one
-			// TODO: Actually you should extract here data.
-			if len(lastTok) < len(tok) {
-				start := len(lastTok)
-				end := len(tok) - start - 1
-				htmlBody += fmt.Sprintf("  %v", tok[start:end])
-			} else {
-				return "", fmt.Errorf("[ERROR] Tokens don't match:\n%v\n%v\n", tok, lastTok)
+			/*
+			   Extract the data instead.
+			   The lexer adds the whole line, where we encountered the given keyword.
+			   Therefore we need to sanitize the whole line. Using the regular
+			   expressions, that user provided
+			*/
+			switch mask {
+			case 1 << 0:
+				pat := self.SiteInstance.GetFindValue("PRODUCT_IMG_RGX")
+				domain := self.SiteInstance.GetFindValue("DOMAIN")
+				curr_site := self.SiteInstance.Url()
+				elements := self.ParserSanitize(tok, pat)
+				htmlEl := fmt.Sprintf("<a href=\"%v%v\"><img alt=\"%v\" src=\"%v%v\"></a>",
+					curr_site, elements[1], elements[3], domain, elements[2][2:])
+				htmlBody += fmt.Sprintf("%v\n", htmlEl)
+				mask = mask << 1
+			case 1 << 1:
+				pat := self.SiteInstance.GetFindValue("PRODUCT_NAME_RGX")
+				elements := self.ParserSanitize(tok, pat)
+				htmlEl := fmt.Sprintf("%v %v %v", H2, elements[2], EH2)
+				htmlBody += fmt.Sprintf("%v\n", htmlEl)
+				mask = mask << 1
+			case 1 << 2:
+				pat := self.SiteInstance.GetFindValue("PRODUCT_RATING_RGX")
+				elements := self.ParserSanitize(tok, pat)
+				htmlEl := fmt.Sprintf("Rating: %v", elements[1])
+				htmlBody += fmt.Sprintf("%v\n", htmlEl)
+				mask = mask << 1
+			case 1 << 3:
+				pat := self.SiteInstance.GetFindValue("PRODUCT_PRICE_RGX")
+				elements := self.ParserSanitize(tok, pat)
+				htmlEl := fmt.Sprintf("Price: $%v", elements[1])
+				htmlBody += fmt.Sprintf("%v\n", htmlEl)
+				mask = 1
 			}
 		}
 	}
+	htmlBody += "</body></html>"
 	return htmlBody, nil
 }
 
-func (self *Scrapper) Update(recentUrl, body string) {
+func (self *Scrapper) Update(recentUrl, body string) (string, error) {
 	/*
 		Update() will add records of the current crawled site. Also we will update
 		state of our program. The results of Lexing, Parsing will be passed here.
 	*/
 	self.ScrapperStats.SitesCrawled++
 	self.ScrapperStats.LastCrawled = recentUrl
-	site, _ := os.Create(fmt.Sprintf("%v%v.html", RESOURCE_DIR,
-		strings.Replace(uuid.New().String(), "-", "", -1)))
+	filename := uuid.New().String()
+	resources := self.SiteInstance.GetFindValue("RESOURCE_DIRECTORY")
+	site, err := os.Create(fmt.Sprintf("%v%v.html", resources,
+		strings.Replace(filename, "-", "", -1)))
+	if err != nil {
+		return "", fmt.Errorf("[IO ERROR] Failed to save the page.")
+	}
 	site.WriteString(body)
+	return filename, nil
+}
+
+func (self *Scrapper) InfoFetch() {
+	fmt.Println("===========================")
+	fmt.Printf("CLIENT INFO: %v\n", self.Client)
+	fmt.Printf("URL: %v\n", self.SiteInstance.Url)
+	fmt.Println("REQUEST CONFIG:")
+	for k, v := range self.RequestConfig {
+		fmt.Printf("  %v : %v\n", k, v)
+	}
+	fmt.Printf("Save Location: %v\n", self.SaveLocation)
+	fmt.Println("===========================")
 }
 
 func (self *Scrapper) Crawl() {
-	var domainUrl string = self.ScrapperConfig.Url()
+	self.InfoFetch()
+	var domainUrl string = self.SiteInstance.Url()
 	var newUrl string
 	for {
-		if subdir, err := self.ScrapperConfig.GetVisitValue(); err != nil {
+		if subdir, err := self.SiteInstance.GetVisitValue(); err != nil {
 			fmt.Printf("[WARNING]: %v is invalid.\n", newUrl)
 			continue
 		} else {
 			newUrl = domainUrl + subdir
+			fmt.Printf("[Crawl()] Currently visiting: %v\n", newUrl)
 		}
 
 		if !IsValidLink(newUrl) {
@@ -294,9 +350,18 @@ func (self *Scrapper) Crawl() {
 		parsed, err := self.Parser(lexed)
 		if err != nil {
 			fmt.Printf("[WARNING] Crawl(): Error encountered while parsing.\n%v", err)
+			panic("TODO")
 		}
 
-		self.Update(newUrl, parsed)
+		filename, err := self.Update(newUrl, parsed)
+		if err != nil {
+			panic("[CRITICAL ERROR] Failed to save the page, might be IO problem.")
+		} else {
+			fmt.Printf("[SUCCESS] Parsed site saved in: %v\n", filename)
+		}
 
+		if self.ScrapperStats.SitesCrawled == uint32(URLS_BUFFER) {
+			panic("Nothing else to do")
+		}
 	}
 }

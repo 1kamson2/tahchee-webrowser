@@ -1,18 +1,31 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"golang.org/Scrapper"
+	"os"
+	"path/filepath"
 )
 
+func IOCheck(err error) {
+	if err != nil {
+		fmt.Println(err)
+		panic("[FATAL ERROR] Check your IO, failed to read file. ")
+	}
+}
+
+func JSONConfig(arg string) map[string]interface{} {
+	var data map[string]interface{}
+	path := filepath.Join(os.Args[3], arg)
+	json_bytes, err := os.ReadFile(path)
+	IOCheck(err)
+	err = json.Unmarshal(json_bytes, &data)
+	IOCheck(err)
+	return data
+}
+
 func main() {
-	/*
-	   1. I am interested in seeing the lowest prices of Computer Components,
-	   so I would like to scrap every (methaphor) site that sells computer parts
-	   and check the lowest prices across the sites. Host it somewhere, make plots.
-	   2. Scrapping LinkedIn is hard, but it is worth to see connections between users.
-	   3. Scrap wiki and list articles
-	   4. Scrap apartment prices
-	*/
 	/*
 	   TODO:
 	     Use proxies
@@ -28,9 +41,12 @@ func main() {
 	     Find a way to sort things, based on categories, reviews.
 	     In tests prepare some prefetch / predownladed sites.
 	*/
-	site := Scrapper.SiteNew(Scrapper.AMAZON_URL)
-	run := Scrapper.New(site)
+	/* How to use?
+	   go run main.go "dom.json" "config.json" "path/to/resources/"
+	*/
+	dom := JSONConfig(os.Args[1])
+	agent := JSONConfig(os.Args[2])
+	site := Scrapper.SiteNew(dom)
+	run := Scrapper.New(site, agent)
 	run.Crawl()
-
-	// fmt.Println(data, err)
 }

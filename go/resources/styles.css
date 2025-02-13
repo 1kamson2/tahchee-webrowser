@@ -1,0 +1,68 @@
+body {
+  font-family: Arial, sans-serif;
+  background-color: #121212;
+  color: #b0b0b0;
+  margin: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 20px;
+}
+
+/* Darker book container */
+div {
+  background: #1e1e1e;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+  padding: 15px;
+  width: 250px;
+  text-align: center;
+  transition: transform 0.2s, background 0.3s;
+}
+
+/* Subtle hover effect */
+div:hover {
+  transform: translateY(-3px);
+  background: #292929;
+}
+
+/* Darker book images */
+div span a img {
+  width: 100%;
+  height: auto;
+  border-radius: 5px;
+  filter: brightness(0.8);
+}
+
+/* Darker book title */
+div span h2 {
+  font-size: 16px;
+  color: #d0d0d0;
+  margin: 10px 0;
+}
+
+/* Low-contrast link styling */
+div span a {
+  text-decoration: none;
+  color: #8aa8d6;
+  font-weight: bold;
+}
+
+div span a:hover {
+  text-decoration: underline;
+  color: #a0c0f0;
+}
+
+/* Rating - Subtle dark gold */
+div span:nth-of-type(3) {
+  color: #b8945e;
+  font-weight: bold;
+  margin: 5px 0;
+}
+
+/* Price - Darkened green */
+div span:nth-of-type(4) {
+  color: #5fa068;
+  font-weight: bold;
+  font-size: 18px;
+}
