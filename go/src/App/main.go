@@ -1,9 +1,10 @@
 package main
 
 import (
+	"BrowserEngine/Handlers"
 	"encoding/json"
 	"fmt"
-	"golang.org/Scrapper"
+	"net/url"
 	"os"
 	"path/filepath"
 )
@@ -44,9 +45,21 @@ func main() {
 	/* How to use?
 	   go run main.go "dom.json" "config.json" "path/to/resources/"
 	*/
-	dom := JSONConfig(os.Args[1])
-	agent := JSONConfig(os.Args[2])
-	site := Scrapper.SiteNew(dom)
-	run := Scrapper.New(site, agent)
-	run.Crawl()
+	// dom := JSONConfig(os.Args[1])
+	// agent := JSONConfig(os.Args[2])
+	// site := Scrapper.SiteNew(dom)
+	// run := Scrapper.New(site, agent)
+	// run.Crawl()
+	s, _ := url.Parse("https://www.example.com:443/")
+	fmt.Println(s.Port())
+	html, _ := Handlers.HTMLNew(*s)
+	html.LexerHTML()
+	body, _ := html.ShowHTML()
+	for i, char := range body {
+		if i%64 != 0 {
+			fmt.Printf("%v", string(char))
+		} else {
+			fmt.Println()
+		}
+	}
 }

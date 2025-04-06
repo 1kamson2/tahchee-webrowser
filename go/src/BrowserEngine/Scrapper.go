@@ -62,32 +62,6 @@ func (self *Scrapper) PrepareHeaders(request *http.Request) error {
 	return nil
 }
 
-func (self Scrapper) GetRequest(subUrl string) (string, error) {
-	request, err := http.NewRequest("GET", subUrl, nil)
-	if err != nil {
-		return "", fmt.Errorf("[GET Request Failed]: %s\n", err)
-	}
-	err = self.PrepareHeaders(request)
-	if err != nil {
-		return "", err
-	}
-	response, err := self.Client.Do(request)
-	if err != nil {
-		return "", fmt.Errorf("[GET Failed]: %v\n", err)
-	}
-
-	if response.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("[GET Failed] Status code: %d\n", response.StatusCode)
-	}
-
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		return "", fmt.Errorf("[GET Failed] Body: %s\n", err)
-	}
-
-	return string(body), nil
-}
-
 func IsValidLink(subUrl string) bool {
 	/* Regex in json, check if it will fuck up the entire program */
 	if pattern, err := regexp.Compile(`^(?:https?://)?(?:[^/.\s]+\.)*books.toscrape\.com(?:/[^/\s]+)*/?$`); err == nil {
