@@ -1,30 +1,8 @@
 package main
 
 import (
-	"BrowserEngine/Handlers"
-	"encoding/json"
-	"fmt"
-	"net/url"
-	"os"
-	"path/filepath"
+	"BrowserEngine"
 )
-
-func IOCheck(err error) {
-	if err != nil {
-		fmt.Println(err)
-		panic("[FATAL ERROR] Check your IO, failed to read file. ")
-	}
-}
-
-func JSONConfig(arg string) map[string]interface{} {
-	var data map[string]interface{}
-	path := filepath.Join(os.Args[3], arg)
-	json_bytes, err := os.ReadFile(path)
-	IOCheck(err)
-	err = json.Unmarshal(json_bytes, &data)
-	IOCheck(err)
-	return data
-}
 
 func main() {
 	/*
@@ -42,24 +20,7 @@ func main() {
 	     Find a way to sort things, based on categories, reviews.
 	     In tests prepare some prefetch / predownladed sites.
 	*/
-	/* How to use?
-	   go run main.go "dom.json" "config.json" "path/to/resources/"
-	*/
-	// dom := JSONConfig(os.Args[1])
-	// agent := JSONConfig(os.Args[2])
-	// site := Scrapper.SiteNew(dom)
-	// run := Scrapper.New(site, agent)
-	// run.Crawl()
-	s, _ := url.Parse("https://www.example.com:443/")
-	fmt.Println(s.Port())
-	html, _ := Handlers.HTMLNew(*s)
-	html.LexerHTML()
-	body, _ := html.ShowHTML()
-	for i, char := range body {
-		if i%64 != 0 {
-			fmt.Printf("%v", string(char))
-		} else {
-			fmt.Println()
-		}
-	}
+	browser := BrowserEngine.Start()
+	browser.Open()
+
 }
