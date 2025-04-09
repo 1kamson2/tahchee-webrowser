@@ -118,7 +118,10 @@ func (self *Browser) Open() {
 			} else {
 				SEARCH_BAR_FLAG = false
 			}
-			body, _ := html.Lexer(self.tagStates, self.bracketMap)
+			body, err := html.Lexer(self.tagStates, self.bracketMap)
+			if err != nil {
+				fmt.Println(err)
+			}
 			for _, char := range body {
 				fmt.Printf("%v", string(char))
 			}

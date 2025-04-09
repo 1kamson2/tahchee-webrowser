@@ -2,6 +2,7 @@ package View
 
 import (
 	"BrowserEngine/Handlers"
+	"BrowserEngine/Utils"
 	"errors"
 	"net/url"
 )
@@ -31,6 +32,7 @@ type Html struct {
 }
 
 type HtmlI interface {
+	IgnoreStyle(body []byte, bracketMap map[byte]byte) ([]byte, error)
 	Lexer()
 	Parser()
 }
@@ -45,55 +47,59 @@ func HtmlNew(url_instance url.URL) (Html, error) {
 		}, nil
 	}
 }
-func (self *Html) Lexer(
-	tagStates map[byte]TAG_STATE,
-	bracketMap map[byte]byte) ([]byte, error) {
-	lexedBody := make([]byte, 0, len(self.body))
-	tagStack := make([]byte, 0)
+
+func (self *Html) AreTagsCorrect(tagArray []byte, bracketMap map[byte]byte) ([]byte, error) {
 	var (
-		lexedIdx        int  = 0
-		tagStackSize    int  = 0
-		IN_TAG_FLAG     bool = false
-		CHECK_TAGS_FLAG bool = true
+		START_LEXING_FLAG bool = false
+		stackSz           int
+		tagStack          []byte
 	)
-	for _, char := range self.body {
-		state, ok := tagStates[char]
-		if ok && state == IGNORE && CHECK_TAGS_FLAG {
+	for idx, char := range tagArray {
+		if !START_LEXING_FLAG && char == LT {
+			START_LEXING_FLAG = true
 			tagStack = append(tagStack, char)
-			tagStackSize++
-			IN_TAG_FLAG = true
 			continue
-		} else if ok && state == APPROVE && CHECK_TAGS_FLAG {
+		}
+		if _, ok := bracketMap[char]; ok {
 			tagStack = append(tagStack, char)
-			tagStackSize++
-		}
-		if CHECK_TAGS_FLAG && ((tagStackSize == 0 && !IN_TAG_FLAG) || tagStack[tagStackSize-1] != bracketMap[char]) {
-			return []byte{}, errors.New("[ERROR] The HTML Document is not correct")
+			continue
 		}
 
-		if tagStackSize == 0 && IN_TAG_FLAG && CHECK_TAGS_FLAG {
-			IN_TAG_FLAG = false
-			CHECK_TAGS_FLAG = false
-
+		stackSz = len(tagStack)
+		_, ok := bracketMap[char]
+		if stackSz == 0 || (tagStack[stackSz-1] != bracketMap[char] && ok) {
+			return []byte{}, errors.New("[ERROR] Invalid CSS.")
 		}
 
-		if !IN_TAG_FLAG {
-			if lexedIdx > 0 && lexedIdx%64 == 0 {
-				lexedBody[lexedIdx] = N
-				lexedIdx++
-				lexedBody[lexedIdx] = char
-				lexedIdx++
-			} else {
-				lexedBody[lexedIdx] = char
-				lexedIdx++
+		if char == GT {
+			tagStack = tagStack[:stackSz-1]
+			if stackSz == 1 {
+				return self.body[idx+1:], nil
 			}
 		}
+	}
+	return []byte{}, errors.New("[ERROR] Out of loop, incorrect CSS")
+}
 
-		if CHECK_TAGS_FLAG {
-			tagStack = tagStack[:tagStackSize-1]
-			tagStackSize--
+func (self *Html) Lexer(tagStates map[byte]TAG_STATE, bracketMap map[byte]byte) ([]byte, error) {
+	var (
+		lexed []byte = self.body
+		idx   int    = -(1 << 31)
+		err   error
+		// tagStack    []byte
+		// IN_TAG_FLAG bool = false
+	)
+
+	/* Sanitize from style if ignore is ON */
+	for idx != 0 {
+		idx, err = Utils.Grep([]byte("</style>"), lexed)
+		if err != nil {
+			return []byte{}, err
+		}
+		if idx != 0 {
+			lexed = lexed[idx+9:]
 		}
 	}
-	self.body = lexedBody
-	return self.body, nil
+
+	return lexed, nil
 }
