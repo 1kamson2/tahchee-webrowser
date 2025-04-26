@@ -22,5 +22,4 @@ func main() {
 	*/
 	browser := BrowserEngine.Start()
 	browser.Open()
-
 }
